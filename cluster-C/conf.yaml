@@ -1,1 +1,1 @@
-schedule: "* 4 * * *"
+schedule: "* * * * *"
