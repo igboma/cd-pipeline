@@ -1,4 +1,5 @@
 name: Create Deployment for PR
+
 on:
   merge_group:
   pull_request:
@@ -18,20 +19,40 @@ jobs:
       IS_RELEASE: ${{ steps.determine-changed-files.outputs.IS_RELEASE }}
       HEO_REVISION: ${{ steps.determine-changed-files.outputs.HEO_REVISION }}
     steps:
-      - name: Checkout
+      # Step 1: Checkout the current repository for PR details
+      - name: Checkout current repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 2
 
+      # Step 2: Clone the go-tools repository from GitHub
+      - name: Clone go-tools repo
+        run: |
+          git clone https://github.com/igboma/go-tools.git
+          cd go-tools
+          git checkout main
+
+      # Step 3: Set up Go environment with version 1.22.4
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.22.4'  # Set to Go version 1.22.4
+
+      # Step 4: Build the go-tools binary from the cloned repo
+      - name: Build go-tools binary
+        run: |
+          cd go-tools
+          go build -o go-tools
+
+      # Step 5: Get all conf.yaml file changes
       - name: Get all conf.yaml file changes
         id: changed-files-yaml
         uses: tj-actions/changed-files@v41
 
-      - name: Download and run go-tools
+      # Step 6: Run the built go-tools binary
+      - name: Run go-tools binary
         id: determine-changed-files
         run: |
-          wget https://github.com/igboma/go-tools/releases/download/v1.0.0/go-tools
-          chmod +x go-tools
           ./go-tools ${{ github.workspace }}
         env:
           CHANGED_FILES: ${{ steps.changed-files-yaml.outputs.all_changed_files }}
@@ -39,6 +60,7 @@ jobs:
           GITHUB_EVENT_PR_MERGED: ${{ github.event.pull_request.merged }}
           GITHUB_OUTPUT: $GITHUB_OUTPUT
 
+      # Step 7: Echo the outputs
       - name: Echo the outputs
         run: |
           echo "COMPONENT: ${{ steps.determine-changed-files.outputs.COMPONENT }}"
