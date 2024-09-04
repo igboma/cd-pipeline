@@ -1,4 +1,4 @@
-version: 0.1.17
+version: 0.1.16
 versionOverride: ""
 namespace: default
 gomplateDatasources: ""
