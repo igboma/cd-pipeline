@@ -18,6 +18,7 @@ jobs:
       VERSION: ${{ steps.determine-changed-files.outputs.VERSION }}
       IS_RELEASE: ${{ steps.determine-changed-files.outputs.IS_RELEASE }}
       HEO_REVISION: ${{ steps.determine-changed-files.outputs.HEO_REVISION }}
+      DEPLOYMENT_NEEDED: ${{ steps.determine-changed-files.outputs.DEPLOYMENT_NEEDED }}
     steps:
       # Step 1: Checkout the current repository for PR details
       - name: Checkout current repo
@@ -68,3 +69,7 @@ jobs:
           echo "VERSION: ${{ steps.determine-changed-files.outputs.VERSION }}"
           echo "IS_RELEASE: ${{ steps.determine-changed-files.outputs.IS_RELEASE }}"
           echo "HEO_REVISION: ${{ steps.determine-changed-files.outputs.HEO_REVISION }}"
+      
+      - name: Perform Deployment
+        if: ${{ steps.determine-changed-files.outputs.DEPLOYMENT_NEEDED == 'true' }}
+        run: echo "Proceeding with deployment..."
