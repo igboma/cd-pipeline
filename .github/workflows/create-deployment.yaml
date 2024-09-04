@@ -1,0 +1,275 @@
+name: Create Deployment for PR
+on:
+  merge_group:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches:
+      - main
+
+jobs:
+  print_env_info:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print environment info
+        uses: qlik-trial/qlik-releaser/.github/actions/print-event-info@master
+  get_changed_files:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' &&
+      (github.event.action != 'closed' || (github.event.action == 'closed' && github.event.pull_request.merged == true)) }}
+    outputs:
+      COMPONENT: ${{ steps.determine-changed-files.outputs.COMPONENT }}
+      ENVIRONMENT: ${{ steps.determine-changed-files.outputs.ENVIRONMENT }}
+      VERSION: ${{ steps.determine-changed-files.outputs.VERSION }}
+      IS_RELEASE: ${{ steps.determine-changed-files.outputs.IS_RELEASE }}
+      HEO_REVISION: ${{ steps.determine-changed-files.outputs.HEO_REVISION }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Get all conf.yaml file changes
+        id: changed-files-yaml
+        uses: tj-actions/changed-files@v41
+      - name: Determine changed files
+        id: determine-changed-files
+        run: |
+          echo "CHANGED FILES: ${{ steps.changed-files-yaml.outputs.all_changed_files }}"
+
+          CHANGED_FILES_ARRAY=(${{ steps.changed-files-yaml.outputs.all_changed_files }})
+          if [[ ${#CHANGED_FILES_ARRAY[@]} -gt 1 ]]; then
+            echo "::error::More than one file was changed"
+            exit 0
+          fi
+          FILE="${CHANGED_FILES_ARRAY[0]}"
+          echo "FILE: $FILE"
+          if [[ $FILE == "components/"*"/conf.yaml" ]]; then
+            echo "The file is a conf.yaml file, because its path is 'components/.../conf.yaml'"
+          else
+            echo "::error::The file is not a conf.yaml file"
+            exit 0
+          fi
+
+          CONF_FILE="${FILE}"
+          cd ${GITHUB_WORKSPACE}
+          echo "FILE: $CONF_FILE"
+
+          COMPONENT=$(echo "$CONF_FILE" | cut -d'/' -f2)
+          ENVIRONMENT=$(echo "$CONF_FILE" | cut -d'/' -f3)
+
+          if [[ "${{ github.event.action == 'closed' && github.event.pull_request.merged == true }}" == "true" ]]; then
+            echo "PR is merged..."
+            VERSION=$(git show origin/main:$CONF_FILE | yq .version)
+            HEO_REVISION=$(git show origin/main:$CONF_FILE | yq .heoRevision)
+          else
+            echo "PR is NOT merged..."
+            if ! git diff origin/main $CONF_FILE | grep -E "\+(version|heoRevision):"; then
+              echo "No version or heoRevision change. Skipping creation of deployment."
+              exit 0
+            fi
+            # check if any other fields changed by converting yaml to json with sorted keys, excluding version and heoRevision fields:
+            jsonCurrentOtherFields=$(yq e -o=json $CONF_FILE | jq -cS 'del(.version, .heoRevision)')
+            echo "jsonCurrentOtherFields: ${jsonCurrentOtherFields}"
+            jsonPreviousOtherFields=$(git show origin/main:$CONF_FILE | yq e -o=json - | jq -cS 'del(.version, .heoRevision)')
+            echo "jsonPreviousOtherFields: ${jsonPreviousOtherFields}"
+            if [ "${jsonCurrentOtherFields}" != "${jsonPreviousOtherFields}" ]; then
+              echo "Something else changed in the file that's not version or heoRevision. Skipping creation of deployment."
+              exit 0
+            fi
+            VERSION=$(yq '.version' $CONF_FILE)
+            HEO_REVISION=$(yq '.heoRevision' $CONF_FILE)
+          fi
+
+          if [[ $VERSION == *-* ]]; then
+            IS_RELEASE="false"
+          else
+            IS_RELEASE="true"
+          fi
+
+          echo "COMPONENT=$COMPONENT"
+          echo "ENVIRONMENT=$ENVIRONMENT"
+          echo "VERSION=$VERSION"
+          echo "IS_RELEASE=$IS_RELEASE"
+          echo "HEO_REVISION=$HEO_REVISION"
+
+          echo "COMPONENT=$COMPONENT" >> $GITHUB_OUTPUT
+          echo "ENVIRONMENT=$ENVIRONMENT" >> $GITHUB_OUTPUT
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "IS_RELEASE=$IS_RELEASE" >> $GITHUB_OUTPUT
+          echo "HEO_REVISION=$HEO_REVISION" >> $GITHUB_OUTPUT
+
+  # set_pending_deployment_status:
+  #   # Note deployment here refers to "high-level" component release deployment as part of release promotion
+  #   needs: [get_changed_files]
+  #   if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.action != 'closed' && needs.get_changed_files.outputs.COMPONENT != '' && needs.get_changed_files.outputs.IS_RELEASE == 'true' }}
+  #   uses: ./.github/workflows/set-component-deployment-status-for-environment.yaml
+  #   secrets: inherit
+  #   with:
+  #     package_type: "helm"
+  #     package_ids: ${{ needs.get_changed_files.outputs.COMPONENT }}:${{ needs.get_changed_files.outputs.VERSION }}
+  #     state: "pending"
+  #     environment: ${{ needs.get_changed_files.outputs.ENVIRONMENT }}
+  # check_production_approval:
+  #   needs: [get_changed_files]
+  #   if: ${{ !cancelled() &&
+  #     github.event_name == 'pull_request' && github.event.action != 'closed' &&
+  #     needs.get_changed_files.outputs.COMPONENT != '' }}
+  #   uses: ./.github/workflows/production-approval.yaml
+  #   secrets: inherit
+  #   with:
+  #     pr_number: ${{ github.event.pull_request.number }}
+  #     package_ids: ${{ needs.get_changed_files.outputs.COMPONENT }}:${{ needs.get_changed_files.outputs.VERSION }}
+  #     environment: ${{ needs.get_changed_files.outputs.ENVIRONMENT }}
+  # check_error_budget_gate:
+  #   needs: [get_changed_files]
+  #   if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.action != 'closed' &&
+  #     needs.get_changed_files.outputs.ENVIRONMENT != 'qlik-cloud-services-stage-eu-west-1' &&
+  #     needs.get_changed_files.outputs.ENVIRONMENT != 'qlik-cloud-services-int-env' &&
+  #     needs.get_changed_files.outputs.COMPONENT != '' }}
+  #   uses: ./.github/workflows/check-eb-gate.yaml
+  #   with:
+  #     pr_number: ${{ github.event.pull_request.number }}
+  #     pr_link: ${{ github.event.pull_request.url }}
+  #     service: ${{ needs.get_changed_files.outputs.COMPONENT }}
+  #     environment: ${{ needs.get_changed_files.outputs.ENVIRONMENT }}
+  #   secrets: inherit
+  # create_deployment:
+  #   if: ${{ !cancelled() &&
+  #     github.event_name == 'pull_request' &&
+  #     (needs.check_error_budget_gate.result != 'failure' || (github.event.action == 'closed' && github.event.pull_request.merged == true)) &&
+  #     (needs.check_production_approval.result != 'failure' || (github.event.action == 'closed' && github.event.pull_request.merged == true)) &&
+  #     needs.get_changed_files.outputs.COMPONENT != '' }}
+  #   needs: [check_production_approval, check_error_budget_gate, get_changed_files]
+  #   runs-on: ubuntu-latest
+  #   env:
+  #     COMPONENT: ${{ needs.get_changed_files.outputs.COMPONENT }}
+  #     ENVIRONMENT: ${{ needs.get_changed_files.outputs.ENVIRONMENT }}
+  #     VERSION: ${{ needs.get_changed_files.outputs.VERSION }}
+  #     HEO_REVISION: ${{ needs.get_changed_files.outputs.HEO_REVISION }}
+  #   outputs:
+  #     SERVICE: ${{ steps.create-deployment.outputs.SERVICE }}
+  #     VERSION: ${{ steps.create-deployment.outputs.VERSION }}
+  #     HEO_REVISION: ${{ steps.create-deployment.outputs.HEO_REVISION }}
+  #   steps:
+  #     - uses: qlik-trial/qlik-releaser/.github/actions/token@master
+  #       id: random-token
+  #       with:
+  #         tokens: "${{ secrets.GH_ACCESS_LIST_OF_TOKENS }}"
+  #     - name: Checkout
+  #       uses: actions/checkout@v4
+  #       with:
+  #         fetch-depth: 2
+  #     - name: Download qcd
+  #       uses: qlik-trial/gitops-environments/.github/actions/download-qcd-binary@main
+  #       with:
+  #         github_token: ${{ steps.random-token.outputs.token }}
+
+  #     - name: Create Deployments for changed files and set to status queued
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #         SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_FOR_Q_GAP_BOTS }}
+  #         COMPONENT: ${{ needs.get_changed_files.outputs.COMPONENT }}
+  #         ENVIRONMENT: ${{ needs.get_changed_files.outputs.ENVIRONMENT }}
+  #         VERSION: ${{ needs.get_changed_files.outputs.VERSION }}
+  #         HEO_REVISION: ${{ needs.get_changed_files.outputs.HEO_REVISION }}
+  #       run: |
+  #         OWNER=qlik-trial
+  #         REPOSITORY=gitops-environments
+  #         PR_NUMBER=${{ github.event.pull_request.number }}
+  #         echo "PR number: ${PR_NUMBER}"
+
+  #         COMPONENT="${{ env.COMPONENT }}"
+  #         ENVIRONMENT="${{ env.ENVIRONMENT }}"
+  #         VERSION="${{ env.VERSION }}"
+  #         HEO_REVISION="${{ env.HEO_REVISION }}"
+  #         REF=${{ github.event.pull_request.head.ref }}
+  #         if [[ "${{ github.event.action == 'closed' && github.event.pull_request.merged == true }}" == "true" ]]; then
+  #           REF="main"
+  #         fi
+  #         DEPLOYMENT_DESCRIPTION="Component ${COMPONENT} upgraded to version ${VERSION} HEO revision ${HEO_REVISION:0:7} in ${ENVIRONMENT}"
+  #         DEPLOYMENT_TASK="deploy:${COMPONENT}:${VERSION}:${HEO_REVISION}"
+  #         DEPLOYMENT_PAYLOAD="{\"pr_number\":${PR_NUMBER},\"component\":\"${COMPONENT}\",\"version\":\"${VERSION}\",\"heoRevision\":\"${HEO_REVISION}\"}"
+
+  #         echo "Finding if there are any existing deployments"
+
+  #         /tmp/qcd deployment find \
+  #           --github-token ${GITHUB_TOKEN} \
+  #           --github-owner ${OWNER} \
+  #           --github-repository ${REPOSITORY} \
+  #           --environment ${ENVIRONMENT} \
+  #           --task ${DEPLOYMENT_TASK} \
+  #           --status "queued,in_progress" \
+  #           --output-file-path /tmp/deployments_by_task_and_status.json
+  #         DEPLOYMENT_IDS="[$(jq -r '.[].id | select(. != null)' /tmp/deployments_by_task_and_status.json | paste -sd, -)]"
+
+  #         echo "Found existing deployments ${DEPLOYMENT_IDS}"
+
+  #         if [[ $DEPLOYMENT_IDS == "[]" ]]; then
+  #           /tmp/qcd deployment create \
+  #             --github-token ${GITHUB_TOKEN} \
+  #             --github-owner ${OWNER} \
+  #             --github-repository ${REPOSITORY} \
+  #             --environment ${ENVIRONMENT} \
+  #             --ref ${REF} \
+  #             --description "${DEPLOYMENT_DESCRIPTION}" \
+  #             --task ${DEPLOYMENT_TASK} \
+  #             --payload ${DEPLOYMENT_PAYLOAD} \
+  #             --output-file-path /tmp/deployment.json
+  #           DEPLOYMENT_ID=$(cat /tmp/deployment.json | jq '.id')
+  #           echo "ID of the created deploment: ${DEPLOYMENT_ID}"
+
+  #           DEPLOYMENT_STATUS_DESCRIPTION="Component ${COMPONENT} version ${VERSION} with HEO revision ${HEO_REVISION:0:7} queued for deployment in ${ENVIRONMENT}"
+  #           STATE="queued"
+
+  #           /tmp/qcd deployment status \
+  #             --github-token ${GITHUB_TOKEN} \
+  #             --github-owner ${OWNER} \
+  #             --github-repository ${REPOSITORY} \
+  #             --deployment-id ${DEPLOYMENT_ID} \
+  #             --status ${STATE} \
+  #             --description "${DEPLOYMENT_STATUS_DESCRIPTION}" \
+  #             --environment ${ENVIRONMENT} \
+  #             --output-file-path /tmp/deployment-status.json
+
+  #           DEPLOYMENT_ID=$(cat /tmp/deployment-status.json | jq '.id')
+  #           echo "ID of the created deploment status: ${DEPLOYMENT_ID}"
+  #         else
+  #           echo "There is already a deployment queued or in_progress with task ${DEPLOYMENT_TASK}. Skipping creation of deployment"
+  #         fi
+  # on-failure:
+  #   needs: [print_env_info, get_changed_files, create_deployment, check_production_approval, check_error_budget_gate]
+  #   runs-on: ubuntu-latest
+  #   if: failure()
+  #   steps:
+  #     - name: Build slack message
+  #       id: slack_message
+  #       run: |
+  #         MESSAGE=""
+  #         if [[ '${{ needs.check_error_budget_gate.result }}' == 'failure' ]]; then
+  #           MESSAGE="Error budget gate failed for service ${{ needs.get_changed_files.outputs.COMPONENT }} in environment ${{ needs.get_changed_files.outputs.ENVIRONMENT }}."
+  #         elif [[ '${{ needs.check_production_approval.result }}' == 'failure' ]]; then
+  #           MESSAGE="Production approval failed for service ${{ needs.get_changed_files.outputs.COMPONENT }}:${{ needs.get_changed_files.outputs.VERSION }} in environment ${{ needs.get_changed_files.outputs.ENVIRONMENT }}."
+  #         else
+  #           MESSAGE="Error creating deployment for ${{ needs.get_changed_files.outputs.COMPONENT }}:${{ needs.get_changed_files.outputs.VERSION }}\nPR: ${{ github.event.pull_request.html_url }}"
+  #         fi
+
+  #         echo "MESSAGE=$MESSAGE" >> $GITHUB_OUTPUT
+
+  #     - name: Notify slack about failure
+  #       uses: qlik-trial/gitops-environments/.github/actions/notify-slack-workflow-run-status@main
+  #       with:
+  #         SLACK_WEBHOOK_URL: ${{ secrets.PROMOTION_PIPELINE_SLACK_WEBHOOK_URL }}
+  #         CUSTOM_MESSAGE: ${{ steps.slack_message.outputs.MESSAGE }}
+  #         STATUS: "failed"
+
+  # set_failed_deployment_status:
+  #   # Note deployment here refers to "high-level" component release deployment as part of release promotion
+  #   needs: [print_env_info, get_changed_files, create_deployment, check_production_approval, check_error_budget_gate]
+  #   if: ${{ failure() && github.event_name == 'pull_request' && github.event.action != 'closed' && needs.get_changed_files.outputs.COMPONENT != '' && needs.get_changed_files.outputs.IS_RELEASE == 'true' }}
+  #   uses: ./.github/workflows/set-component-deployment-status-for-environment.yaml
+  #   secrets: inherit
+  #   with:
+  #     package_type: "helm"
+  #     package_ids: ${{ needs.get_changed_files.outputs.COMPONENT }}:${{ needs.get_changed_files.outputs.VERSION }}
+  #     state: "failure"
+  #     environment: ${{ needs.get_changed_files.outputs.ENVIRONMENT }}
