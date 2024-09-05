@@ -54,12 +54,16 @@ jobs:
       - name: Run go-tools binary
         id: determine-changed-files
         run: |
-          /tmp/go-tools/go-tools ${{ github.workspace }}
+          /tmp/go-tools/go-tools \
+          --workspace "${{ github.workspace }}" \
+          --pr-number "${{ github.event.pull_request.number }}" \
+          --git-url "${{ github.event.pull_request.head.repo.clone_url }}"
         env:
           CHANGED_FILES: ${{ steps.changed-files-yaml.outputs.all_changed_files }}
           GITHUB_EVENT_ACTION: ${{ github.event.action }}
           GITHUB_EVENT_PR_MERGED: ${{ github.event.pull_request.merged }}
           GITHUB_OUTPUT: $GITHUB_OUTPUT
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Step 7: Echo the outputs
       - name: Echo the outputs
