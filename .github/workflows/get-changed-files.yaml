@@ -24,7 +24,7 @@ jobs:
       - name: Checkout current repo
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       # Step 2: Clone the go-tools repository into /tmp/go-tools
       - name: Clone go-tools repo to /tmp/go-tools
