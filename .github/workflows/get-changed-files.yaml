@@ -63,7 +63,7 @@ jobs:
           GITHUB_EVENT_ACTION: ${{ github.event.action }}
           GITHUB_EVENT_PR_MERGED: ${{ github.event.pull_request.merged }}
           GITHUB_OUTPUT: $GITHUB_OUTPUT
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.REPO_TOKEN }}
 
       # Step 7: Echo the outputs
       - name: Echo the outputs
