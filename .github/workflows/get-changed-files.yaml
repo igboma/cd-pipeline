@@ -55,10 +55,10 @@ jobs:
       - name: Run go-tools binary
         id: determine-changed-files
         run: |
-          /tmp/go-tools/go-tools \
+         /tmp/go-tools/go-tools \
           --workspace "${{ github.workspace }}" \
           --pr-number "${{ github.event.pull_request.number }}" \
-          --git-url "${{ github.event.pull_request.head.repo.clone_url }}\
+          --git-url "${{ github.event.pull_request.head.repo.clone_url }}" \
           --source-branch "${{ github.event.pull_request.head.ref }}" \
           --destination-branch "${{ github.event.pull_request.base.ref }}"
         env:
