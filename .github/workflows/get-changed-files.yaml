@@ -58,7 +58,9 @@ jobs:
           /tmp/go-tools/go-tools \
           --workspace "${{ github.workspace }}" \
           --pr-number "${{ github.event.pull_request.number }}" \
-          --git-url "${{ github.event.pull_request.head.repo.clone_url }}"
+          --git-url "${{ github.event.pull_request.head.repo.clone_url }}\
+          --source-branch "${{ github.event.pull_request.head.ref }}" \
+          --destination-branch "${{ github.event.pull_request.base.ref }}"
         env:
           CHANGED_FILES: ${{ steps.changed-files-yaml.outputs.all_changed_files }}
           GITHUB_EVENT_ACTION: ${{ github.event.action }}
