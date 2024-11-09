@@ -8,9 +8,6 @@ jobs:
   lint-templated-values:
     runs-on: ubuntu-latest
     steps:
-      - name: Print event info
-        uses: qlik-trial/qlik-releaser/.github/actions/print-event-info@master
-
       - name: Checkout
         uses: actions/checkout@v4
         with:
