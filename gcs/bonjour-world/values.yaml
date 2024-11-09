@@ -1,4 +1,4 @@
-## chart: https://github.com/qlik-trial/sre-hello-world/tree/master/manifests/sre-hello-world-sleeper/chart/sre-hello-world-sleeper1
+## chart: https://github.com/qlik-trial/sre-hello-world/tree/master/manifests/sre-hello-world-sleeper/chart/sre-hello-world-sleeper
 
 image:
   repository: registry.com/sre-hello-world-sleeper

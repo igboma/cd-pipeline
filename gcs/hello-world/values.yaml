@@ -1,6 +1,6 @@
 # values.yaml
 
-# Define your application configuration here
+# Define your application configuration here1
 app:
   name: hello-world
   version: 1.0.0
