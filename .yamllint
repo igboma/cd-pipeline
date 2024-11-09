@@ -1,0 +1,12 @@
+extends: default
+
+ignore: |
+  .github/*
+
+rules:
+  line-length:
+    max: 240
+    level: warning
+  indentation:
+    spaces: 2
+  document-start: disable

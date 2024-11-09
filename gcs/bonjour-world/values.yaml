@@ -1,0 +1,17 @@
+## chart: https://github.com/qlik-trial/sre-hello-world/tree/master/manifests/sre-hello-world-sleeper/chart/sre-hello-world-sleeper1
+
+image:
+  repository: registry.com/sre-hello-world-sleeper
+  tag: 0.1.12
+
+replicaCount: 1
+arguments:
+  - --sleep-secs
+  - "2000"
+
+resources:
+  requests:
+    memory: 5Mi
+    cpu: 1m
+  limits:
+    memory: 10Mi

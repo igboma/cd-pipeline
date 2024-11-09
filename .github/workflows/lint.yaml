@@ -1,0 +1,76 @@
+name: Check if the gomplated file with the value.yaml file is a valid yaml file
+on:
+  push:
+    branches:
+      - lint-test
+
+jobs:
+  lint-templated-values:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print event info
+        uses: qlik-trial/qlik-releaser/.github/actions/print-event-info@master
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get all sealed-secrets file changes
+        id: changed-files-yaml
+        uses: tj-actions/changed-files@v41
+        with:
+          files: 'qcs/*/values.yaml'
+
+      - name: Echo changed files
+        id: echo-changed-files
+        run: |
+          echo "changed-files CHANGED FILES: ${{ steps.changed-files-yaml.outputs.all_changed_files }}"
+
+      - name: Install gomplate
+        run: |
+          mkdir bin
+          curl -o bin/gomplate -L "https://github.com/hairyhenderson/gomplate/releases/download/v3.10.0/gomplate_linux-amd64"
+          chmod +x bin/gomplate
+          echo "${PWD}/bin" >> $GITHUB_PATH
+
+      - name: Apply gomplate to values.yaml
+        if: steps.changed-files-yaml.outputs.any_changed == 'true'
+        run: |
+          files_array=(${{ steps.changed-files-yaml.outputs.all_changed_files }})
+          for file in "${files_array[@]}"
+          do
+            output_file="${file%/values.yaml}/values_templated.yaml"
+            echo "Applying gomplate to $file, outputting to $output_file"
+            ENVIRONMENT=stage REGION=eu-west-1 CONTAINER_REGISTRY_URL=registry.com ./bin/gomplate -f "$file" | sed '/./,$!d' > "$output_file"
+          done
+
+      - name: Install yamllint
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y yamllint
+
+      - name: Lint rendered YAML files
+        if: steps.changed-files-yaml.outputs.any_changed == 'true'
+        run: |
+          # Write a temporary yamllint config file to adjust the rules
+          echo "extends: default" > .yamllint.yml
+          echo "rules:" >> .yamllint.yml
+          echo "  line-length:" >> .yamllint.yml
+          echo "    max: 620" >> .yamllint.yml      # Allow up to 120 characters per line
+          echo "  document-start:" >> .yamllint.yml
+          echo "    present: false" >> .yamllint.yml # Do not enforce "---" at the start
+          echo "  empty-lines:" >> .yamllint.yml
+          echo "    max: 3" >> .yamllint.yml         # Allow up to 3 blank lines
+
+          cat .yamllint.yml
+
+          # Lint each rendered file with the updated config
+          files_array=(${{ steps.changed-files-yaml.outputs.all_changed_files }})
+          for file in "${files_array[@]}"
+          do
+            output_file="${file%/values.yaml}/values_templated.yaml"
+            cat "$output_file"
+            echo "Linting $output_file"
+            yamllint -c .yamllint.yml "$output_file"
+          done
