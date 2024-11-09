@@ -17,7 +17,7 @@ jobs:
         id: changed-files-yaml
         uses: tj-actions/changed-files@v41
         with:
-          files: 'qcs/*/values.yaml'
+          files: 'gcs/*/values.yaml'
 
       - name: Echo changed files
         id: echo-changed-files
