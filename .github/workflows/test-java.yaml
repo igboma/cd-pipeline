@@ -1,0 +1,44 @@
+name: Setup Java and Gradle
+
+on:
+  workflow_dispatch:
+    inputs:
+      java_version:
+        description: 'Java version to set up (e.g., 11, 17)'
+        required: true
+        default: '11'
+      gradle_version:
+        description: 'Gradle version to set up (e.g., 6.7.1, 8.4)'
+        required: true
+        default: '6.7.1'
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check default Java and Gradle versions
+        run: |
+          echo "=== Default Java version on runner ==="
+          java -version || echo "Java not found"
+          echo "=== Default Gradle version on runner ==="
+          gradle --version || echo "Gradle not found"
+          which gradle || echo "Gradle not found in PATH"
+
+      - name: Set up Java ${{ inputs.java_version }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ inputs.java_version }}
+
+      - name: Set up Gradle ${{ inputs.gradle_version }}
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: ${{ inputs.gradle_version }}
+
+      - name: Show updated Java and Gradle versions
+        run: |
+          echo "=== Java version after setup ==="
+          java -version
+          echo "=== Gradle version after setup ==="
+          gradle --version
+          which gradle
