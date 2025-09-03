@@ -9,5 +9,5 @@ enableArgoHookDeleteRedis: "false"
 enableArgoHookDeleteRedisForce: "false"
 slackNotifyChannel: qcs_int
 onboarded: "true"
-deploymentSchedule: "* * * * *"
+deploymentSchedule: "2 * * * *"
 deploymentWindow: 30
